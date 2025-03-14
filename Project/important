@@ -1,0 +1,140 @@
+# Define a manual stopword list (add more words as needed)
+custom_stopwords <- c("der", "die", "das", "und", "ist", "ein", "in", "zu", "mit", "oder", 
+                      "auf", "für", "von", "im", "nicht", "eine", "es", "dem", "den",
+                      "auch", "dass", "haben", "ein", "einen", "werden", "sind", "aber",
+                      "sich", "wenn", "noch", "wird", "sehr", "diese", "dies", "müssen",
+                      "dann", "mehr", "jetzt", "über", "dieser", "meine", "kann", "muss"
+                      )
+
+
+
+# Now, you can tokenize the filtered sentences
+speech_tokens_clean <- df_covid_climate %>%
+  unnest_tokens(word, Speech_clean)  # Tokenize the filtered speeches
+
+# Dokument-Term-Matrix (DTM) erstellen
+dtm <- speech_tokens_clean %>%
+  count(URL, word) %>%
+  cast_dtm(document = URL, term = word, value = n)
+
+# LDA-Modell mit 10 Themen trainieren
+lda_model <- LDA(dtm, k = 10, control = list(seed = 1234))
+
+# Die wichtigsten Wörter pro Thema anzeigen
+topics <- tidy(lda_model, matrix = "beta")
+
+# Zeige die 10 wichtigsten Wörter pro Thema
+top_terms <- topics %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup()
+
+print(top_terms)
+
+
+
+
+
+####  COVID-Reden herausfiltern ####
+
+
+df_covid <- df_clean %>%
+  filter(str_detect(Speech_clean, "covid|corona"))
+
+# Anzahl der COVID-Reden pro Partei
+covid_by_party <- df_covid %>%
+  count(Fraktion) %>%
+  arrange(desc(n))
+
+print(covid_by_party)
+
+
+##### Themen in COVID-Reden analysieren #####
+
+# 1️⃣ Tokenize nur die COVID-Reden
+covid_tokens <- df_covid %>%
+  unnest_tokens(word, Speech_clean) %>%
+  anti_join(stop_words)
+
+# 2️⃣ DTM für COVID-Reden erstellen
+dtm_covid <- covid_tokens %>%
+  count(URL, word) %>%
+  cast_dtm(document = URL, term = word, value = n)
+
+# 3️⃣ LDA auf COVID-Reden trainieren
+lda_covid <- LDA(dtm_covid, k = 5, control = list(seed = 1234))
+
+# 4️⃣ Wichtigste COVID-Themen anzeigen
+covid_topics <- tidy(lda_covid, matrix = "beta") %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup()
+
+print(covid_topics)
+
+
+
+##### Vergleich der Parteien #####
+# Partei-bezogene COVID-Themen analysieren
+covid_topics_by_party <- df_covid %>%
+  group_by(Fraktion) %>%
+  summarise(Top_Words = paste(unique(unlist(str_extract_all(Speech_clean, "\\b[A-Za-z]{4,}\\b"))), collapse = ", "))
+
+print(covid_topics_by_party)
+
+
+
+#### Visualization #####
+library(wordcloud)
+
+covid_words <- df_covid %>%
+  unnest_tokens(word, Speech_clean) %>%
+  count(word, sort = TRUE) 
+
+wordcloud(words = covid_words$word, freq = covid_words$n, min.freq = 5, colors = brewer.pal(8, "Dark2"))
+
+
+
+library(ggplot2)
+
+ggplot(covid_by_party, aes(x = reorder(Fraktion, -n), y = n, fill = Fraktion)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Anzahl der COVID-Reden pro Partei", x = "Partei", y = "Anzahl der Reden")
+  
+  
+  #### TOPIC MODELLING ####
+# Erstelle eine Document-Term-Matrix
+dtmx <- DocumentTermMatrix(Corpus(VectorSource(df_covid_climate$Speech_clean)))
+
+# Trainiere das LDA-Modell mit 5 Themen
+lda_model <- LDA(dtm, k = 5, control = list(seed = 1234))
+
+# Zeige die wichtigsten Begriffe für jedes Thema
+terms(lda_model, 10)
+
+
+
+
+unbekannt_df <- df_covid_climate%>% 
+  filter(Faction == "Unbekannt") %>%
+  select(Name, Politician_ID, Faction)  # Zeigt Name, Politician_ID und Faction an
+
+
+# Liste der Politician_IDs, die du überprüfen möchtest
+politician_ids_to_check <- c("11003512", "11004772", "11004822", "11004851", 
+                             "11004748", "11005079", "11005219", "11005053")
+
+
+# Filtern der Zeilen, die eine dieser Politician_IDs enthalten
+df_filtered <- df %>%
+  filter(Politician_ID %in% politician_ids_to_check) %>%
+  select(Politician_ID, Name)
+  
+  
+# Save filtered data to an RDS file
+ saveRDS(df_covid_climate, "df_covid_climate.rds")
+
+# Save summary to an RDS file
+ saveRDS(party_mentions_summary, "party_mentions_summary.rds")
