@@ -1,4 +1,4 @@
-# Projekt-DH
+# Introduction to DH
 
 ## A Comparative Analysis of Political Parties’ Discourse
 
